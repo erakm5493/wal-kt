@@ -4,3 +4,7 @@ AWS_ACCESS_KEY_ID
 AWS_ACCOUNT_ID
 AWS_SECRET_ACCESS_KEY
 KUBECONFIG
+
+************************************************************************************
+Command To convert Kubeconfig to Base64
+cat ~/.kube/config | base64
