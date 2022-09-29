@@ -1,18 +1,77 @@
 name: Docker Image CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    paths:
+    - http-server/**
+  push:
+    paths:
+    - http-server/**
+    branches:         # array of glob patterns matching against refs/heads. Optional; defaults to all
+    - main         # triggers on pushes that contain changes in master
+
+
+# https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
+env:
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_DEFAULT_OUTPUT: json
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  CONTAINER_IMAGE: example-eks:${{ github.sha }}
+  KUBECONFIG: ${{ secrets.KUBECONFIG }}
 
 jobs:
-
-  build:
-
+  build-and-push:
+    name: Build and deploy
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+
+    - name: Checkout
+      uses: actions/checkout@master
+
+    # Add steps here like linting, testing, minification, etc.
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    - name: Setup ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+  
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: example-eks
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG http-server 
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        
+    
+    - name: Install and configure kubectl
+      env:
+        KUBECONFIG: ${{ secrets.KUBECONFIG }} 
+      run: |
+        VERSION=$(curl --silent https://storage.googleapis.com/kubernetes-release/release/stable.txt)
+        curl https://storage.googleapis.com/kubernetes-release/release/v1.23.6/bin/linux/amd64/kubectl \
+            --progress-bar \
+            --location \
+            --remote-name
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        echo $KUBECONFIG > kube.txt
+        cat kube.txt | base64 -di > kubeconfig.yaml
+    - name: Deploy
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: example-eks
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        export ECR_REPOSITORY=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+        export IMAGE_TAG=${{ github.sha }}
+        export KUBECONFIG=kubeconfig.yaml
+        envsubst < k8s/kustomization.tmpl.yaml > k8s/kustomization.yaml
+        kubectl kustomize k8s | kubectl apply -f -
