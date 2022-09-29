@@ -16,7 +16,7 @@ requestFailed = new promClient.Counter({
 })
 
 app.get("/", (req, res) => {
-	res.json({ message: `${new Date} w00t! It's working fine`})
+	res.json({ message: `${new Date} w00t! It's working`})
 	requestSuccess.inc(1)
 })
 
