@@ -1,0 +1,9 @@
+resources:
+- deployment.yaml
+- namespace.yaml
+- service.yaml
+
+images:
+- name: 043864719756.dkr.ecr.us-east-1.amazonaws.com/example-eks
+  newName: ${ECR_REPOSITORY}
+  newTag: ${IMAGE_TAG}
