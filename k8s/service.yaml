@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
     name: website
-    namespace: smartjoules
+    namespace: walmart
     labels:
         app: website
 spec:
